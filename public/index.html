@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADMS Attendance Calendar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .calendar-day {
+      min-height: 80px;
+    }
+    .calendar-day:hover {
+      background-color: #f3f4f6;
+    }
+    .has-data {
+      background-color: #dbeafe;
+    }
+    .has-data:hover {
+      background-color: #bfdbfe;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div class="container mx-auto px-4 py-8 max-w-7xl">
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900 mb-2">ADMS Attendance System</h1>
+      <p class="text-gray-600">View and track employee attendance records</p>
+    </div>
+
+    <!-- Date Selector & Quick Search -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Select Date</label>
+          <input type="date" id="dateInput" 
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Filter by PIN</label>
+          <input type="text" id="pinFilter" placeholder="Enter employee PIN"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <div class="flex items-end">
+          <button id="searchBtn" 
+            class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            Search Attendance
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calendar Navigation -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <button id="prevMonth" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors">
+          ← Previous
+        </button>
+        <h2 id="currentMonth" class="text-xl font-semibold text-gray-800"></h2>
+        <button id="nextMonth" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors">
+          Next →
+        </button>
+      </div>
+
+      <!-- Calendar Grid -->
+      <div class="grid grid-cols-7 gap-2">
+        <div class="text-center font-semibold text-gray-600 py-2">Sun</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Mon</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Tue</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Wed</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Thu</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Fri</div>
+        <div class="text-center font-semibold text-gray-600 py-2">Sat</div>
+        <div id="calendarDays" class="col-span-7 grid grid-cols-7 gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Results Display -->
+    <div id="resultsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
+      <h3 class="text-xl font-semibold text-gray-800 mb-4">Attendance Records</h3>
+      <div id="selectedDate" class="text-gray-600 mb-4"></div>
+      <div id="resultsContainer"></div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+      <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span class="text-gray-700">Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const API_BASE_URL = window.location.origin;
+    
+    // State
+    let currentDate = new Date();
+    let selectedDate = null;
+    let attendanceCache = {};
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeDateInput();
+      renderCalendar();
+      attachEventListeners();
+    });
+
+    function initializeDateInput() {
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('dateInput').value = today;
+    }
+
+    function attachEventListeners() {
+      document.getElementById('searchBtn').addEventListener('click', searchAttendance);
+      document.getElementById('prevMonth').addEventListener('click', () => changeMonth(-1));
+      document.getElementById('nextMonth').addEventListener('click', () => changeMonth(1));
+      document.getElementById('dateInput').addEventListener('change', (e) => {
+        selectedDate = e.target.value;
+        searchAttendance();
+      });
+    }
+
+    function changeMonth(delta) {
+      currentDate.setMonth(currentDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      
+      // Update month display
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      document.getElementById('currentMonth').textContent = `${monthNames[month]} ${year}`;
+
+      // Get first day of month and total days
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const calendarDays = document.getElementById('calendarDays');
+      calendarDays.innerHTML = '';
+
+      // Add empty cells for days before month starts
+      for (let i = 0; i < firstDay; i++) {
+        const emptyDay = document.createElement('div');
+        emptyDay.className = 'calendar-day border border-gray-200 rounded-lg';
+        calendarDays.appendChild(emptyDay);
+      }
+
+      // Add days of month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dayCell = document.createElement('div');
+        dayCell.className = 'calendar-day border border-gray-300 rounded-lg p-2 cursor-pointer transition-colors';
+        
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        dayCell.innerHTML = `
+          <div class="font-semibold text-gray-800 mb-1">${day}</div>
+          <div class="text-xs text-gray-500" id="day-${dateStr}">Click to view</div>
+        `;
+        
+        dayCell.addEventListener('click', () => {
+          document.getElementById('dateInput').value = dateStr;
+          selectedDate = dateStr;
+          searchAttendance();
+        });
+        
+        calendarDays.appendChild(dayCell);
+      }
+    }
+
+    async function searchAttendance() {
+      const dateInput = document.getElementById('dateInput').value;
+      const pinFilter = document.getElementById('pinFilter').value.trim();
+      
+      if (!dateInput) {
+        alert('Please select a date');
+        return;
+      }
+
+      showLoading(true);
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/attendance/${dateInput}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch attendance data');
+        }
+
+        let data = await response.json();
+        
+        // Filter by PIN if provided
+        if (pinFilter) {
+          data = data.filter(record => record.pin.includes(pinFilter));
+        }
+
+        displayResults(data, dateInput);
+        attendanceCache[dateInput] = data;
+        
+      } catch (error) {
+        console.error('Error fetching attendance:', error);
+        alert('Error loading attendance data. Please try again.');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function displayResults(data, date) {
+      const resultsSection = document.getElementById('resultsSection');
+      const resultsContainer = document.getElementById('resultsContainer');
+      const selectedDateEl = document.getElementById('selectedDate');
+      
+      resultsSection.classList.remove('hidden');
+      selectedDateEl.textContent = `Showing records for ${formatDate(date)}`;
+      
+      if (data.length === 0) {
+        resultsContainer.innerHTML = `
+          <div class="text-center py-8 text-gray-500">
+            <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-lg font-medium">No attendance records found</p>
+            <p class="text-sm">Try selecting a different date or check if data has been uploaded</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Sort by PIN
+      data.sort((a, b) => a.pin.localeCompare(b.pin));
+
+      // Create table
+      resultsContainer.innerHTML = `
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PIN</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">First Punch</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Punch</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              ${data.map(record => createTableRow(record)).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+            <div class="text-green-800 text-sm font-medium">Present</div>
+            <div class="text-2xl font-bold text-green-900">${data.filter(r => r.status === 'PRESENT').length}</div>
+          </div>
+          <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+            <div class="text-yellow-800 text-sm font-medium">Short Duration</div>
+            <div class="text-2xl font-bold text-yellow-900">${data.filter(r => r.status === 'SHORT').length}</div>
+          </div>
+          <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+            <div class="text-red-800 text-sm font-medium">Absent</div>
+            <div class="text-2xl font-bold text-red-900">${data.filter(r => r.status === 'ABSENT').length}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function createTableRow(record) {
+      const statusColors = {
+        'PRESENT': 'bg-green-100 text-green-800',
+        'SHORT': 'bg-yellow-100 text-yellow-800',
+        'ABSENT': 'bg-red-100 text-red-800'
+      };
+
+      const duration = formatDuration(record.duration_minutes);
+      const firstPunch = record.first_ts ? formatTime(record.first_ts) : '-';
+      const lastPunch = record.last_ts ? formatTime(record.last_ts) : '-';
+
+      return `
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${record.pin}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${firstPunch}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${lastPunch}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${duration}</td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[record.status] || 'bg-gray-100 text-gray-800'}">
+              ${record.status}
+            </span>
+          </td>
+        </tr>
+      `;
+    }
+
+    function formatDuration(minutes) {
+      if (!minutes || minutes === 0) return '0h 0m';
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return `${hours}h ${mins}m`;
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return '-';
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    }
+
+    function showLoading(show) {
+      const spinner = document.getElementById('loadingSpinner');
+      if (show) {
+        spinner.classList.remove('hidden');
+      } else {
+        spinner.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
