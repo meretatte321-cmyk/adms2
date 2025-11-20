@@ -23,7 +23,7 @@ const db = createClient({
 });
 
 // Middleware - Raw body parser for device data
-app.use('/iclock/cdata', express.raw({ type: '*/*', limit: '10mb' }));
+app.use('/iclock/cdata.aspx', express.raw({ type: '*/*', limit: '10mb' }));
 
 // Standard middleware for other routes
 app.use(express.json());
@@ -215,7 +215,7 @@ async function computeAttendanceForDay(dayStr) {
 }
 
 // --- Routes ---
-app.get('/iclock/cdata', (req, res) => {
+app.get('/iclock/cdata.aspx', (req, res) => {
   res.send('OK');
 });
 
@@ -223,7 +223,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.post('/iclock/cdata', async (req, res) => {
+app.post('/iclock/cdata.aspx', async (req, res) => {
   try {
     const table = req.query.table || req.query.options;
     
@@ -298,7 +298,7 @@ app.post('/iclock/cdata', async (req, res) => {
 
     res.json({ inserted });
   } catch (error) {
-    console.error('Error processing cdata:', error);
+    console.error('Error processing cdata.aspx:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -362,7 +362,7 @@ app.get('/', (req, res) => {
       
       <h2>Endpoints:</h2>
       <div class="endpoint">
-        <strong>GET/POST /iclock/cdata</strong> - Device communication endpoint
+        <strong>GET/POST /iclock/cdata.aspx</strong> - Device communication endpoint
       </div>
       <div class="endpoint">
         <strong>GET /attendance/:day</strong> - Get attendance for specific day (YYYY-MM-DD)
